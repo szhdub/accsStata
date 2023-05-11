@@ -1,0 +1,36 @@
+{
+  "name": "vite_elm_tailwind",
+  "author": "Andrea Callea",
+  "description": "Elm, Vite, Tailwind CSS + daisyUI, template :)",
+  "version": "2.0.0",
+  "private": true,
+  "devDependencies": {
+    "autoprefixer": "^10.4.13",
+    "elm-tooling": "^1.12.0",
+    "postcss": "^8.4.21",
+    "prettier": "^2.8.3",
+    "tailwindcss": "^3.2.4",
+    "vite": "^3.2.4",
+    "vite-plugin-compression": "^0.5.1",
+    "vite-plugin-elm": "^2.7.2",
+    "vite-plugin-imagemin": "^0.6.1",
+    "vite-plugin-webfont-dl": "^3.6.0"
+  },
+  "scripts": {
+    "postinstall": "elm-tooling install",
+    "dev": "vite",
+    "prebuild": "elm-tooling install",
+    "build": "vite build",
+    "preview": "npm run build; vite preview"
+  },
+  "standard": {
+    "ignore": [
+      "public",
+      "dist",
+      "elm.js"
+    ]
+  },
+  "dependencies": {
+    "daisyui": "^2.49.0"
+  }
+}

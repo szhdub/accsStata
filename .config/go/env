@@ -1,3 +1,0 @@
-GO111MODULE=on
-GOPATH=/angus/Go
-GOPROXY=https://goproxy.cn,direct
