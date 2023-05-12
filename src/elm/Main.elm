@@ -167,7 +167,7 @@ subscriptions model =
 getAccsCmd : String -> Cmd Msg
 getAccsCmd host =
     Http.get
-        { url = "http://" ++ host ++ ":5019/accs"
+        { url = "http://" ++ host ++ ":5019/accs/"
         , expect =
             decoderAccs |> Http.expectJson AccountRes
         }
@@ -177,7 +177,7 @@ savePost : AccInfo -> String -> String -> Cmd Msg
 savePost accs id host=
     let
         postUrl =
-            "http://" ++ host ++ ":5019/accs" ++ id
+            "http://" ++ host ++ ":5019/accs/" ++ id
     in
     Http.request
         { method = "PUT"
