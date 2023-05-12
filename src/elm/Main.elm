@@ -85,22 +85,14 @@ update msg model =
 
 
 view model =
-    div [ class "flex content-center justify-center mt-4" ]
+    div [ class "flex content-center justify-center my-4" ]
         [ viewBody model, viewErr model ]
 
 
 viewBody model =
     div [ class "w-1/2" ]
         [ table [ class "table table-compact table-zebra w-full" ]
-            [ thead []
-                [ tr []
-                    [ th []
-                        [ text "帐号" ]
-                    , th []
-                        [ text "密码" ]
-                    ]
-                ]
-            , tbody []
+            [ tbody []
                 (List.map accList (List.sortBy (\s -> s.is_used) (Dict.values model.accsDict)))
             ]
         ]
@@ -127,8 +119,6 @@ accList acc =
     in
     tr [ class "", classList [ ( "text-red-500", used ), ( "hover", not used ), ( "select-none", used ) ] ]
         [ td []
-            [ text acc.username ]
-        , td []
             [ text acc.acc_info ]
         , if used then
             td [ class "btn btn-error btn-sm" ]
