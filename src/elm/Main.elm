@@ -12,7 +12,7 @@ import Json.Decode as Decode
 import Json.Encode as Encode
 
 
-main : Program () Model Msg
+main : Program Decode.Value Model Msg
 main =
     Browser.element
         { view = view
@@ -78,7 +78,7 @@ update msg model =
                 accsDict =
                     Dict.insert v.username accInfo model.accsDict
             in
-            ( { model | accsDict = accsDict }, savePost accInfo v.username )
+            ( { model | accsDict = accsDict }, savePost accInfo v.username model.host )
 
         AccountChangeRes v ->
             ( model, Cmd.none )
@@ -136,15 +136,27 @@ accList acc =
 
 type alias Model =
     { accsDict : Dict.Dict String AccInfo
+    , host : String
     , error : Maybe String
     }
 
 
-init _ =
+init : Decode.Value -> ( Model, Cmd Msg )
+init flags =
+    let
+        host =
+            case Decode.decodeValue (Decode.field "host" Decode.string) flags of
+                Ok v ->
+                    v
+
+                Err _ ->
+                    ""
+    in
     ( { accsDict = Dict.empty
+      , host = host
       , error = Nothing
       }
-    , getAccsCmd
+    , getAccsCmd host
     )
 
 
@@ -152,20 +164,20 @@ subscriptions model =
     Sub.none
 
 
-getAccsCmd : Cmd Msg
-getAccsCmd =
+getAccsCmd : String -> Cmd Msg
+getAccsCmd host =
     Http.get
-        { url = "http://localhost:5019/accs"
+        { url = "http://" ++ host ++ ":5019/accs"
         , expect =
             decoderAccs |> Http.expectJson AccountRes
         }
 
 
-savePost : AccInfo -> String -> Cmd Msg
-savePost accs id =
+savePost : AccInfo -> String -> String -> Cmd Msg
+savePost accs id host=
     let
         postUrl =
-            "http://localhost:5019/accs/" ++ id
+            "http://" ++ host ++ ":5019/accs" ++ id
     in
     Http.request
         { method = "PUT"
