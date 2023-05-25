@@ -8,8 +8,10 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Http
+import InfiniteList as IL
 import Json.Decode as Decode
 import Json.Encode as Encode
+import Time
 
 
 main : Program Decode.Value Model Msg
@@ -34,6 +36,11 @@ type alias AccsInfo =
     }
 
 
+type ListItem
+    = Header
+    | Row AccInfo
+
+
 type State
     = Used
     | Cancel
@@ -49,6 +56,48 @@ type Msg
     = AccountRes (Result Http.Error (List AccInfo))
     | AccountChangeRes (Result Http.Error AccInfo)
     | Change UpdateState
+    | ChangeMark Bool String
+    | Tick Time.Posix
+    | InfListMsg IL.Model
+    | Search String
+
+
+type alias Model =
+    { accsDict : Dict.Dict String AccInfo
+    , host : String
+    , mark : Dict.Dict String String
+    , error : Maybe String
+    , infList : IL.Model
+    , search : String
+    }
+
+
+init : Decode.Value -> ( Model, Cmd Msg )
+init flags =
+    let
+        host =
+            case Decode.decodeValue (Decode.field "host" Decode.string) flags of
+                Ok v ->
+                    v
+
+                Err _ ->
+                    ""
+    in
+    ( { accsDict = Dict.empty
+      , mark = Dict.empty
+      , host = host
+      , error = Nothing
+      , infList = IL.init
+      , search = ""
+      }
+    , getAccsCmd host
+    )
+
+
+subscriptions model =
+    Sub.batch
+        [ Time.every 5000 Tick
+        ]
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -60,8 +109,11 @@ update msg model =
                     let
                         accDict =
                             Dict.fromList (List.map (\s -> ( s.username, s )) accs)
+
+                        filtered =
+                            filterAccs model.search accDict
                     in
-                    ( { model | accsDict = accDict }, Cmd.none )
+                    ( { model | accsDict = filtered }, Cmd.none )
 
                 Err err ->
                     ( { model | error = Just (buildErrorMessage err) }, Cmd.none )
@@ -83,19 +135,189 @@ update msg model =
         AccountChangeRes v ->
             ( model, Cmd.none )
 
+        Tick v ->
+            ( model, getAccsCmd model.host )
+
+        ChangeMark isMark user ->
+            let
+                mark =
+                    if isMark then
+                        Dict.insert user user model.mark
+
+                    else
+                        Dict.remove user model.mark
+            in
+            ( { model | mark = mark }, Cmd.none )
+
+        InfListMsg infList ->
+            ( { model | infList = infList }, Cmd.none )
+
+        Search v ->
+            let
+                filtered =
+                    filterAccs v model.accsDict
+            in
+            ( { model | search = v, accsDict = filtered }, Cmd.none )
+
+
+filterAccs : String -> Dict.Dict String b -> Dict.Dict String b
+filterAccs filter accs =
+    let
+        filtered k v =
+            String.contains filter k
+    in
+    Dict.filter filtered accs
+
+
+itemHeight : Int -> ListItem -> Int
+itemHeight _ item =
+    case item of
+        Header ->
+            50
+
+        Row _ ->
+            48
+
+
+containerHeight : Int
+containerHeight =
+    760
+
+
+
+-- viewCount model =
+
 
 view model =
-    div [ class "flex content-center justify-center my-4" ]
-        [ viewBody model, viewErr model ]
+    div [ class " overflow-hidden min-w-5xl" ]
+        [ viewBody model
+        , viewErr model
+        ]
 
 
 viewBody model =
-    div [ class "w-1/2" ]
-        [ table [ class "table table-compact table-zebra w-full" ]
-            [ tbody []
-                (List.map accList (List.sortBy (\s -> s.is_used) (Dict.values model.accsDict)))
+    let
+        sortAccsDict =
+            List.sortBy (\s -> s.is_used) (Dict.values model.accsDict)
+                |> List.map Row
+    in
+    div [ class "w-full lg:w-1/2 m-auto" ]
+        [ div
+            [ class "text-gray-900 overflow-scroll"
+            , style "height" (String.fromInt containerHeight ++ "px")
+            , IL.onScroll InfListMsg
+            ]
+            [ IL.view (config model) model.infList (Header :: sortAccsDict)
             ]
         ]
+
+
+searchView =
+    div [ class "absolute top-4 left-4" ]
+        [ input
+            [ class "input input-primary input-sm"
+            , placeholder "搜索"
+            , onInput Search
+            ]
+            []
+        ]
+
+
+itemView : Model -> Int -> Int -> ListItem -> Html Msg
+itemView model idx listIdx item =
+    case item of
+        Header ->
+            thead
+                [ style "height" (String.fromInt (itemHeight idx item) ++ "px")
+                , class "sticky top-0 bg-base-100"
+                ]
+                [ tr []
+                    [ td [ class "px-4" ]
+                        [ searchView ]
+                    ]
+                ]
+
+        Row acc ->
+            tbody
+                [ class "whitespace-nowrap overflow-scroll"
+                , style "height" (String.fromInt (itemHeight idx item) ++ "px")
+                ]
+                [ let
+                    used =
+                        if acc.is_used == 0 then
+                            False
+
+                        else
+                            True
+
+                    mark =
+                        List.any (\s -> s == acc.username) (Dict.values model.mark)
+                  in
+                  tr
+                    [ classList
+                        [ ( "text-red-500", used )
+                        , ( "hover:bg-base-300", not used )
+                        , ( "select-none", used )
+                        , ( "text-yellow-600", mark )
+                        ]
+                    , class ""
+                    ]
+                    (List.append
+                        (case String.split "----" acc.acc_info of
+                            username :: passward :: email :: _ ->
+                                [ td [ class "px-4" ]
+                                    [ text username ]
+                                , td [ class "px-4" ] [ text passward ]
+                                , td [ class "px-4" ] [ text email ]
+                                ]
+
+                            _ ->
+                                []
+                        )
+                        [ if used then
+                            td [ class "pr-4" ]
+                                [ button [ class "btn btn-error btn-outline btn-sm", onClick (Change (UpdateState acc.username Cancel)) ]
+                                    [ text "取消" ]
+                                ]
+
+                          else
+                            td [ class "pr-4" ]
+                                [ button [ class "btn btn-primary btn-outline btn-sm", onClick (Change (UpdateState acc.username Used)) ]
+                                    [ text "使用" ]
+                                ]
+                        , td
+                            [ class "pr-4 " ]
+                            [ button
+                                [ class "btn btn-warning btn-outline btn-sm"
+                                , classList [ ( "btn-error", mark ) ]
+                                , onClick (ChangeMark (not mark) acc.username)
+                                ]
+                                [ text <|
+                                    if mark then
+                                        "取消"
+
+                                    else
+                                        "标记"
+                                ]
+                            ]
+                        ]
+                    )
+                ]
+
+
+config : Model -> IL.Config ListItem Msg
+config model =
+    IL.config
+        { itemView = itemView model
+        , itemHeight = IL.withVariableHeight itemHeight
+        , containerHeight = containerHeight
+        }
+        |> IL.withOffset 320
+        |> IL.withKeepFirst 1
+
+
+
+-- searcher model  =
 
 
 viewErr model =
@@ -108,62 +330,6 @@ viewErr model =
             text ""
 
 
-accList acc =
-    let
-        used =
-            if acc.is_used == 0 then
-                False
-
-            else
-                True
-    in
-    tr [ class "", classList [ ( "text-red-500", used ), ( "hover", not used ), ( "select-none", used ) ] ]
-        [ td []
-            [ text acc.acc_info ]
-        , if used then
-            td [ class "btn btn-error btn-sm" ]
-                [ button [ onClick (Change (UpdateState acc.username Cancel)) ]
-                    [ text "取消" ]
-                ]
-
-          else
-            td [ class "btn btn-primary btn-sm" ]
-                [ button [ onClick (Change (UpdateState acc.username Used)) ]
-                    [ text "使用" ]
-                ]
-        ]
-
-
-type alias Model =
-    { accsDict : Dict.Dict String AccInfo
-    , host : String
-    , error : Maybe String
-    }
-
-
-init : Decode.Value -> ( Model, Cmd Msg )
-init flags =
-    let
-        host =
-            case Decode.decodeValue (Decode.field "host" Decode.string) flags of
-                Ok v ->
-                    v
-
-                Err _ ->
-                    ""
-    in
-    ( { accsDict = Dict.empty
-      , host = host
-      , error = Nothing
-      }
-    , getAccsCmd host
-    )
-
-
-subscriptions model =
-    Sub.none
-
-
 getAccsCmd : String -> Cmd Msg
 getAccsCmd host =
     Http.get
@@ -174,7 +340,7 @@ getAccsCmd host =
 
 
 savePost : AccInfo -> String -> String -> Cmd Msg
-savePost accs id host=
+savePost accs id host =
     let
         postUrl =
             "http://" ++ host ++ ":5019/accs/" ++ id
